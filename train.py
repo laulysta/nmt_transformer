@@ -15,21 +15,36 @@ from transformer.Models import Transformer
 from transformer.Optim import ScheduledOptim
 from DataLoader import DataLoader
 
-def get_performance(crit, pred, gold, smoothing=False, num_class=None):
+def get_performance(crit, pred, gold, smoothing_eps=0.1, num_class=None):
     ''' Apply label smoothing if needed '''
 
     # TODO: Add smoothing
-    if smoothing:
-        assert bool(num_class)
-        eps = 0.1
-        gold = gold * (1 - eps) + (1 - gold) * eps / num_class
-        raise NotImplementedError
+    # if smoothing:
+    #     assert bool(num_class)
+    #     eps = 0.1
+    #     gold = gold * (1 - eps) + (1 - gold) * eps / num_class
+    #     raise NotImplementedError
 
-    loss = crit(pred, gold.contiguous().view(-1))
+    gold = gold.contiguous().view(-1)
+
+    logsoft = nn.LogSoftmax()
+    pred = logsoft(pred)
+
+    loss = crit(pred, gold)
+
+    if smoothing_eps:
+        smooth = gold.ne(Constants.PAD).type(torch.FloatTensor)*torch.mean(pred, -1)
+        smooth = -smooth.sum()
+        loss = (1-smoothing_eps)*loss + smoothing_eps*smooth
+        
+
+    
+
+   
 
     pred = pred.max(1)[1]
 
-    gold = gold.contiguous().view(-1)
+    
     n_correct = pred.data.eq(gold.data)
     n_correct = n_correct.masked_select(gold.ne(Constants.PAD).data).sum()
 
@@ -188,7 +203,7 @@ def main():
 
     parser.add_argument('-log', default=None)
     parser.add_argument('-save_model', default=None)
-    parser.add_argument('-save_mode', type=str, choices=['all', 'best'], default='best')
+    parser.add_argument('-save_mode', type=str, choices=['all', 'best'], default='all')
 
     parser.add_argument('-no_cuda', action='store_true')
 
@@ -256,7 +271,8 @@ def main():
         ''' With PAD token zero weight '''
         weight = torch.ones(vocab_size)
         weight[Constants.PAD] = 0
-        return nn.CrossEntropyLoss(weight, size_average=False)
+        #return nn.CrossEntropyLoss(weight, size_average=False)
+        return nn.NLLLoss(weight, size_average=False)
 
     crit = get_criterion(training_data.tgt_vocab_size)
 
