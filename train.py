@@ -6,6 +6,7 @@ import argparse
 import math
 import time
 
+from subprocess import Popen
 from tqdm import tqdm
 import torch
 import torch.nn as nn
@@ -15,7 +16,7 @@ from transformer.Models import Transformer
 from transformer.Optim import ScheduledOptim
 from DataLoader import DataLoader
 
-def get_performance(crit, pred, gold, smoothing_eps=0.1, num_class=None):
+def get_performance(crit, logsoftmax, pred, gold, smoothing_eps=0.1, num_class=None):
     ''' Apply label smoothing if needed '''
 
     # TODO: Add smoothing
@@ -27,8 +28,8 @@ def get_performance(crit, pred, gold, smoothing_eps=0.1, num_class=None):
 
     gold = gold.contiguous().view(-1)
 
-    logsoft = nn.LogSoftmax()
-    pred = logsoft(pred)
+    #logsoftmax = nn.LogSoftmax()
+    pred = logsoftmax(pred)
 
     loss = crit(pred, gold)
 
@@ -50,7 +51,7 @@ def get_performance(crit, pred, gold, smoothing_eps=0.1, num_class=None):
 
     return loss, n_correct
 
-def train_epoch(model, training_data, crit, optimizer):
+def train_epoch(model, training_data, crit, logsoftmax, optimizer):
     ''' Epoch operation in training phase'''
 
     model.train()
@@ -72,7 +73,7 @@ def train_epoch(model, training_data, crit, optimizer):
         pred = model(src, tgt)
 
         # backward
-        loss, n_correct = get_performance(crit, pred, gold)
+        loss, n_correct = get_performance(crit, logsoftmax, pred, gold)
         loss.backward()
 
         # update parameters
@@ -87,7 +88,7 @@ def train_epoch(model, training_data, crit, optimizer):
 
     return total_loss/n_total_words, n_total_correct/n_total_words
 
-def eval_epoch(model, validation_data, crit):
+def eval_epoch(model, validation_data, crit, logsoftmax):
     ''' Epoch operation in evaluation phase '''
 
     model.eval()
@@ -106,7 +107,7 @@ def eval_epoch(model, validation_data, crit):
 
         # forward
         pred = model(src, tgt)
-        loss, n_correct = get_performance(crit, pred, gold)
+        loss, n_correct = get_performance(crit, logsoftmax, pred, gold)
 
         # note keeping
         n_words = gold.data.ne(Constants.PAD).sum()
@@ -116,7 +117,7 @@ def eval_epoch(model, validation_data, crit):
 
     return total_loss/n_total_words, n_total_correct/n_total_words
 
-def train(model, training_data, validation_data, crit, optimizer, opt):
+def train(model, training_data, validation_data, crit, logsoftmax, optimizer, opt):
     ''' Start training '''
 
     log_train_file = None
@@ -133,19 +134,20 @@ def train(model, training_data, validation_data, crit, optimizer, opt):
             log_tf.write('epoch,loss,ppl,accuracy\n')
             log_vf.write('epoch,loss,ppl,accuracy\n')
 
+    p_validation = None
     valid_accus = []
     for epoch_i in range(opt.epoch):
         print('[ Epoch', epoch_i, ']')
 
         start = time.time()
-        train_loss, train_accu = train_epoch(model, training_data, crit, optimizer)
+        train_loss, train_accu = train_epoch(model, training_data, crit, logsoftmax, optimizer)
         print('  - (Training)   ppl: {ppl: 8.5f}, accuracy: {accu:3.3f} %, '\
               'elapse: {elapse:3.3f} min'.format(
                   ppl=math.exp(min(train_loss, 100)), accu=100*train_accu,
                   elapse=(time.time()-start)/60))
 
         start = time.time()
-        valid_loss, valid_accu = eval_epoch(model, validation_data, crit)
+        valid_loss, valid_accu = eval_epoch(model, validation_data, crit, logsoftmax)
         print('  - (Validation) ppl: {ppl: 8.5f}, accuracy: {accu:3.3f} %, '\
                 'elapse: {elapse:3.3f} min'.format(
                     ppl=math.exp(min(valid_loss, 100)), accu=100*valid_accu,
@@ -168,6 +170,21 @@ def train(model, training_data, validation_data, crit, optimizer, opt):
                 if valid_accu >= max(valid_accus):
                     torch.save(checkpoint, model_name)
                     print('    - [Info] The checkpoint file has been updated.')
+
+            ###########################################################################################
+            if opt.external_validation_script:
+                print("Calling external validation script")
+                if p_validation is not None and p_validation.poll() is None:
+                    print("Waiting for previous validation run to finish")
+                    print("If this takes too long, consider increasing validation interval, reducing validation set size, or speeding up validation by using multiple processes")
+                    valid_wait_start = time.time()
+                    p_validation.wait()
+                    print("Waited for {0:.1f} seconds".format(time.time()-valid_wait_start))
+                external_validation_script = [opt.external_validation_script[0], model_name, opt.external_validation_script[1], opt.external_validation_script[2], opt.data]
+                p_validation = Popen(external_validation_script)
+
+
+            ###########################################################################################
 
         if log_train_file and log_valid_file:
             with open(log_train_file, 'a') as log_tf, open(log_valid_file, 'a') as log_vf:
@@ -206,6 +223,9 @@ def main():
     parser.add_argument('-save_mode', type=str, choices=['all', 'best'], default='all')
 
     parser.add_argument('-no_cuda', action='store_true')
+
+    parser.add_argument('-external_validation_script', type=str, default=None, metavar='PATH', nargs='*',
+                         help="location of validation script (to run your favorite metric for validation) (default: %(default)s)")
 
     opt = parser.parse_args()
     opt.cuda = not opt.no_cuda
@@ -276,11 +296,14 @@ def main():
 
     crit = get_criterion(training_data.tgt_vocab_size)
 
+    logsoftmax = nn.LogSoftmax()
+
     if opt.cuda:
         transformer = transformer.cuda()
         crit = crit.cuda()
+        logsoftmax = logsoftmax.cuda()
 
-    train(transformer, training_data, validation_data, crit, optimizer, opt)
+    train(transformer, training_data, validation_data, crit, logsoftmax, optimizer, opt)
 
 if __name__ == '__main__':
     main()
