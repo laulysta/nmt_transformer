@@ -26,7 +26,7 @@ data=$4
 #     -i $dev \
 #     -o $dev.output.dev \
 #     -k 1 -n -p 5
-python translate.py \
+python3 translate.py \
 -model $model_name \
 -src $dev \
 -vocab $data \

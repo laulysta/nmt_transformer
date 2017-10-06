@@ -16,7 +16,7 @@ from transformer.Models import Transformer
 from transformer.Optim import ScheduledOptim
 from DataLoader import DataLoader
 
-def get_performance(crit, logsoftmax, pred, gold, smoothing_eps=0.1, num_class=None):
+def get_performance(crit, logsoftmax, pred, gold, opt, smoothing_eps=0.1, num_class=None):
     ''' Apply label smoothing if needed '''
 
     # TODO: Add smoothing
@@ -34,7 +34,10 @@ def get_performance(crit, logsoftmax, pred, gold, smoothing_eps=0.1, num_class=N
     loss = crit(pred, gold)
 
     if smoothing_eps:
-        smooth = gold.ne(Constants.PAD).type(torch.FloatTensor)*torch.mean(pred, -1)
+        if opt.cuda:
+            smooth = gold.ne(Constants.PAD).type(torch.cuda.FloatTensor)*torch.mean(pred, -1)
+        else:
+            smooth = gold.ne(Constants.PAD).type(torch.FloatTensor)*torch.mean(pred, -1)
         smooth = -smooth.sum()
         loss = (1-smoothing_eps)*loss + smoothing_eps*smooth
         
@@ -51,7 +54,7 @@ def get_performance(crit, logsoftmax, pred, gold, smoothing_eps=0.1, num_class=N
 
     return loss, n_correct
 
-def train_epoch(model, training_data, crit, logsoftmax, optimizer):
+def train_epoch(model, training_data, crit, logsoftmax, optimizer, opt):
     ''' Epoch operation in training phase'''
 
     model.train()
@@ -73,7 +76,7 @@ def train_epoch(model, training_data, crit, logsoftmax, optimizer):
         pred = model(src, tgt)
 
         # backward
-        loss, n_correct = get_performance(crit, logsoftmax, pred, gold)
+        loss, n_correct = get_performance(crit, logsoftmax, pred, gold, opt)
         loss.backward()
 
         # update parameters
@@ -88,7 +91,7 @@ def train_epoch(model, training_data, crit, logsoftmax, optimizer):
 
     return total_loss/n_total_words, n_total_correct/n_total_words
 
-def eval_epoch(model, validation_data, crit, logsoftmax):
+def eval_epoch(model, validation_data, crit, logsoftmax, opt):
     ''' Epoch operation in evaluation phase '''
 
     model.eval()
@@ -107,7 +110,7 @@ def eval_epoch(model, validation_data, crit, logsoftmax):
 
         # forward
         pred = model(src, tgt)
-        loss, n_correct = get_performance(crit, logsoftmax, pred, gold)
+        loss, n_correct = get_performance(crit, logsoftmax, pred, gold, opt)
 
         # note keeping
         n_words = gold.data.ne(Constants.PAD).sum()
@@ -140,14 +143,14 @@ def train(model, training_data, validation_data, crit, logsoftmax, optimizer, op
         print('[ Epoch', epoch_i, ']')
 
         start = time.time()
-        train_loss, train_accu = train_epoch(model, training_data, crit, logsoftmax, optimizer)
+        train_loss, train_accu = train_epoch(model, training_data, crit, logsoftmax, optimizer, opt)
         print('  - (Training)   ppl: {ppl: 8.5f}, accuracy: {accu:3.3f} %, '\
               'elapse: {elapse:3.3f} min'.format(
                   ppl=math.exp(min(train_loss, 100)), accu=100*train_accu,
                   elapse=(time.time()-start)/60))
 
         start = time.time()
-        valid_loss, valid_accu = eval_epoch(model, validation_data, crit, logsoftmax)
+        valid_loss, valid_accu = eval_epoch(model, validation_data, crit, logsoftmax, opt)
         print('  - (Validation) ppl: {ppl: 8.5f}, accuracy: {accu:3.3f} %, '\
                 'elapse: {elapse:3.3f} min'.format(
                     ppl=math.exp(min(valid_loss, 100)), accu=100*valid_accu,
