@@ -2,6 +2,7 @@
 import argparse
 import torch
 import transformer.Constants as Constants
+import numpy as np
 
 def read_instances_from_file(inst_file, max_sent_len, keep_case):
     ''' Convert file into word seq lists and vocab '''
@@ -30,7 +31,7 @@ def read_instances_from_file(inst_file, max_sent_len, keep_case):
 
     return word_insts
 
-def build_vocab_idx(word_insts, min_word_count):
+def build_vocab_idx(word_insts, min_word_count, voc_size):
     ''' Trim vocab by number of occurence '''
 
     full_vocab = set(w for sent in word_insts for w in sent)
@@ -41,23 +42,51 @@ def build_vocab_idx(word_insts, min_word_count):
         Constants.EOS_WORD: Constants.EOS,
         Constants.PAD_WORD: Constants.PAD,
         Constants.UNK_WORD: Constants.UNK}
-
+    nb_special_words = len(word2idx)
     word_count = {w: 0 for w in full_vocab}
 
     for sent in word_insts:
         for word in sent:
             word_count[word] += 1
 
-    ignored_word_count = 0
-    for word, count in word_count.items():
-        if word not in word2idx:
-            if count > min_word_count:
-                word2idx[word] = len(word2idx)
-            else:
-                ignored_word_count += 1
 
-    print('[Info] Trimmed vocabulary size = {},'.format(len(word2idx)),
-          'each with minimum occurrence = {}'.format(min_word_count))
+    if voc_size <= 0:
+        ignored_word_count = 0
+        for word, count in word_count.items():
+            if word not in word2idx:
+                if count > min_word_count:
+                    word2idx[word] = len(word2idx)
+                else:
+                    ignored_word_count += 1
+        print('[Info] Trimmed vocabulary size = {},'.format(len(word2idx)),
+                'each with minimum occurrence = {}'.format(min_word_count))
+    else:
+        #####################################################################
+        voc_size = min(voc_size, len(word_count)+len(word2idx))
+
+        vec_voc = []
+        vec_count = []
+        for w in word_count:
+            if w not in word2idx:
+                vec_voc += [w]
+                vec_count += [word_count[w]]
+
+        vec_voc = np.array(vec_voc)
+        vec_count = np.array(vec_count)
+        index_sorted = np.argsort(vec_count)
+        vec_voc = (vec_voc[index_sorted])[::-1]
+        #vec_count = (vec_count[index_sorted])[::-1]
+
+        for i in range(voc_size-len(word2idx)):
+            word = vec_voc[i]
+            word2idx[word] = len(word2idx)
+
+        ignored_word_count = len(vec_voc) - (voc_size-nb_special_words)
+        print('[Warning] voc_size is greater then 0, min_word_count will be ignored')
+        #####################################################################
+
+
+    print('[Info] Trimmed vocabulary size = {},'.format(len(word2idx)))
     print("[Info] Ignored word count = {}".format(ignored_word_count))
     return word2idx
 
@@ -79,6 +108,7 @@ def main():
     parser.add_argument('-keep_case', action='store_true')
     parser.add_argument('-share_vocab', action='store_true')
     parser.add_argument('-vocab', default=None)
+    parser.add_argument('-voc_size', type=int, default=-1)
 
     opt = parser.parse_args()
     opt.max_token_seq_len = opt.max_word_seq_len + 2 # include the <s> and </s>
@@ -127,13 +157,13 @@ def main():
         if opt.share_vocab:
             print('[Info] Build shared vocabulary for source and target.')
             word2idx = build_vocab_idx(
-                train_src_word_insts + train_tgt_word_insts, opt.min_word_count)
+                train_src_word_insts + train_tgt_word_insts, opt.min_word_count, opt.voc_size)
             src_word2idx = tgt_word2idx = word2idx
         else:
             print('[Info] Build vocabulary for source.')
-            src_word2idx = build_vocab_idx(train_src_word_insts, opt.min_word_count)
+            src_word2idx = build_vocab_idx(train_src_word_insts, opt.min_word_count, opt.voc_size)
             print('[Info] Build vocabulary for target.')
-            tgt_word2idx = build_vocab_idx(train_tgt_word_insts, opt.min_word_count)
+            tgt_word2idx = build_vocab_idx(train_tgt_word_insts, opt.min_word_count, opt.voc_size)
 
     # word to index
     print('[Info] Convert source word instances into sequences of word index.')
