@@ -29,7 +29,7 @@ def get_performance(crit, logsoftmax, pred, gold, opt, smoothing_eps=0.1, num_cl
     gold = gold.contiguous().view(-1)
 
     #logsoftmax = nn.LogSoftmax()
-    pred = logsoftmax(pred)
+    #pred = logsoftmax(pred)
 
     loss = crit(pred, gold)
 
@@ -289,9 +289,15 @@ def main():
 
     #print(transformer)
 
+    # optimizer = ScheduledOptim(
+    #     optim.Adam(
+    #         transformer.get_trainable_parameters(),
+    #         betas=(0.9, 0.98), eps=1e-09),
+    #     opt.d_model, opt.n_warmup_steps)
+
     optimizer = ScheduledOptim(
         optim.Adam(
-            transformer.get_trainable_parameters(),
+            transformer.parameters(),
             betas=(0.9, 0.98), eps=1e-09),
         opt.d_model, opt.n_warmup_steps)
 

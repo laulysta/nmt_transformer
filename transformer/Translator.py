@@ -33,19 +33,19 @@ class Translator(object):
             n_head=model_opt.n_head,
             dropout=model_opt.dropout)
 
-        prob_projection = nn.LogSoftmax()
+        #prob_projection = nn.LogSoftmax()
 
         model.load_state_dict(checkpoint['model'])
         print('[Info] Trained model state loaded.')
 
         if opt.cuda:
             model.cuda()
-            prob_projection.cuda()
+            #prob_projection.cuda()
         else:
             model.cpu()
-            prob_projection.cpu()
+            #prob_projection.cpu()
 
-        model.prob_projection = prob_projection
+        #model.prob_projection = prob_projection
 
         self.model = model
         self.model.eval()
