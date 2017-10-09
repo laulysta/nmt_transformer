@@ -227,6 +227,8 @@ def main():
 
     parser.add_argument('-no_cuda', action='store_true')
 
+    parser.add_argument('-multi_gpu', action='store_true')
+
     parser.add_argument('-external_validation_script', type=str, default=None, metavar='PATH', nargs='*',
                          help="location of validation script (to run your favorite metric for validation) (default: %(default)s)")
 
@@ -280,6 +282,10 @@ def main():
         n_layers=opt.n_layers,
         n_head=opt.n_head,
         dropout=opt.dropout)
+
+
+    if opt.multi_gpu:
+        transformer = nn.DataParallel(transformer)
 
     #print(transformer)
 
