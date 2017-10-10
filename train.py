@@ -29,7 +29,7 @@ def get_performance(crit, logsoftmax, pred, gold, opt, smoothing_eps=0.1, num_cl
     gold = gold.contiguous().view(-1)
 
     #logsoftmax = nn.LogSoftmax()
-    #pred = logsoftmax(pred)
+    pred = logsoftmax(pred)
 
     loss = crit(pred, gold)
 
@@ -77,7 +77,11 @@ def train_epoch(model, training_data, crit, logsoftmax, optimizer, opt):
 
         # backward
         loss, n_correct = get_performance(crit, logsoftmax, pred, gold, opt)
-        loss.backward()
+        if opt.multi_gpu:
+            gradients = torch.FloatTensor([1.0, 1.0, 1.0, 1.0])
+            loss.backward(gradients.cuda())
+        else:
+            loss.backward()
 
         # update parameters
         optimizer.step()
@@ -284,9 +288,6 @@ def main():
         dropout=opt.dropout)
 
 
-    if opt.multi_gpu:
-        transformer = nn.DataParallel(transformer)
-
     #print(transformer)
 
     # optimizer = ScheduledOptim(
@@ -310,7 +311,6 @@ def main():
         return nn.NLLLoss(weight, size_average=False)
 
     crit = get_criterion(training_data.tgt_vocab_size)
-
     logsoftmax = nn.LogSoftmax()
 
     if opt.cuda:
@@ -318,6 +318,12 @@ def main():
         crit = crit.cuda()
         logsoftmax = logsoftmax.cuda()
 
+    if opt.multi_gpu:
+        transformer = nn.DataParallel(transformer)
+        crit = nn.DataParallel(crit)
+        logsoftmax = nn.DataParallel(logsoftmax)
+
+    
     train(transformer, training_data, validation_data, crit, logsoftmax, optimizer, opt)
 
 if __name__ == '__main__':

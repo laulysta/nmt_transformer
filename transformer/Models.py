@@ -149,7 +149,6 @@ class Transformer(nn.Module):
             d_inner_hid=d_inner_hid, dropout=dropout)
         self.tgt_word_proj = Linear(d_model, n_tgt_vocab, bias=False)
         self.dropout = nn.Dropout(dropout)
-        self.prob_projection = nn.LogSoftmax()
 
         assert d_model == d_word_vec, \
         'To facilitate the residual connections, the dimensions of all module output shall be the same.'
@@ -187,4 +186,4 @@ class Transformer(nn.Module):
 
         seq_logit = self.tgt_word_proj(dec_output)
 
-        return self.prob_projection(seq_logit.view(-1, seq_logit.size(2)))
+        return seq_logit.view(-1, seq_logit.size(2))
