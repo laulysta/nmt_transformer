@@ -14,7 +14,7 @@ class Translator(object):
         self.opt = opt
         self.tt = torch.cuda if opt.cuda else torch
 
-        checkpoint = torch.load(opt.model)
+        checkpoint = torch.load(opt.model, map_location=lambda storage, loc: storage)
         model_opt = checkpoint['settings']
         self.model_opt = model_opt
 
