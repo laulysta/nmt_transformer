@@ -11,7 +11,7 @@ class DataLoader(object):
     def __init__(
             self, src_word2idx, tgt_word2idx,
             src_insts=None, tgt_insts=None,
-            cuda=True, batch_size=64, shuffle=True):
+            cuda=True, batch_size=64, shuffle=True, is_train=True):
 
         assert src_insts
         assert len(src_insts) >= batch_size
@@ -39,6 +39,8 @@ class DataLoader(object):
         self._iter_count = 0
 
         self._need_shuffle = shuffle
+
+        self.is_train = is_train
 
         if self._need_shuffle:
             self.shuffle()
@@ -113,8 +115,8 @@ class DataLoader(object):
                 [pos_i+1 if w_i != Constants.PAD else 0 for pos_i, w_i in enumerate(inst)]
                 for inst in inst_data])
 
-            inst_data_tensor = Variable(torch.LongTensor(inst_data))
-            inst_position_tensor = Variable(torch.LongTensor(inst_position))
+            inst_data_tensor = Variable(torch.LongTensor(inst_data), volatile=not is_train)
+            inst_position_tensor = Variable(torch.LongTensor(inst_position), volatile=not is_train)
 
             if self.cuda:
                 inst_data_tensor = inst_data_tensor.cuda()

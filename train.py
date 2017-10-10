@@ -251,7 +251,8 @@ def main():
         src_insts=data['train']['src'],
         tgt_insts=data['train']['tgt'],
         batch_size=opt.batch_size,
-        cuda=opt.cuda)
+        cuda=opt.cuda,
+        is_train=True)
 
     validation_data = DataLoader(
         data['dict']['src'],
@@ -260,7 +261,8 @@ def main():
         tgt_insts=data['valid']['tgt'],
         batch_size=opt.batch_size,
         shuffle=False,
-        cuda=opt.cuda)
+        cuda=opt.cuda,
+        is_train=False)
 
     opt.src_vocab_size = training_data.src_vocab_size
     opt.tgt_vocab_size = training_data.tgt_vocab_size
