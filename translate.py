@@ -34,7 +34,7 @@ def main():
     opt.cuda = not opt.no_cuda
 
     # Prepare DataLoader
-    preprocess_data = torch.load(opt.vocab, map_location=lambda storage, loc: storage)
+    preprocess_data = torch.load(opt.vocab)
     preprocess_settings = preprocess_data['settings']
     test_src_word_insts = read_instances_from_file(
         opt.src,
