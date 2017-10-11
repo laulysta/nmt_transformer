@@ -58,6 +58,8 @@ def main():
             all_hyp, all_scores = translator.translate_batch(batch)
             for idx_seqs in all_hyp:
                 for idx_seq in idx_seqs:
+                    if idx_seqs[-1] == 3: # if last word is EOS
+                        idx_seqs = idx_seq[:-1]
                     pred_line = ' '.join([test_data.tgt_idx2word[idx] for idx in idx_seq])
                     f.write(pred_line + '\n')
     print('[Info] Finished.')
