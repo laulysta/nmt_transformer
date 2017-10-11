@@ -4,7 +4,7 @@ import torch
 import transformer.Constants as Constants
 import numpy as np
 
-def read_instances_from_file(inst_file, max_sent_len, keep_case):
+def read_instances_from_file(inst_file, max_sent_len, keep_case, is_ctx=False):
     ''' Convert file into word seq lists and vocab '''
 
     word_insts = []
@@ -18,7 +18,7 @@ def read_instances_from_file(inst_file, max_sent_len, keep_case):
                 trimmed_sent_count += 1
             word_inst = words[:max_sent_len]
 
-            if word_inst:
+            if word_inst or is_ctx:
                 word_insts += [[Constants.BOS_WORD] + word_inst + [Constants.EOS_WORD]]
             else:
                 word_insts += [None]
@@ -121,7 +121,7 @@ def main():
     train_tgt_word_insts = read_instances_from_file(
         opt.train_tgt, opt.max_word_seq_len, opt.keep_case)
     train_ctx_word_insts = read_instances_from_file(
-        opt.train_ctx, opt.max_word_seq_len, opt.keep_case)
+        opt.train_ctx, opt.max_word_seq_len, opt.keep_case, is_ctx=True)
 
     if not (len(train_src_word_insts) == len(train_tgt_word_insts) == len(train_ctx_word_insts)):
         print('[Warning] The training instance count is not equal.')
@@ -140,7 +140,7 @@ def main():
     valid_tgt_word_insts = read_instances_from_file(
         opt.valid_tgt, opt.max_word_seq_len, opt.keep_case)
     valid_ctx_word_insts = read_instances_from_file(
-        opt.valid_ctx, opt.max_word_seq_len, opt.keep_case)
+        opt.valid_ctx, opt.max_word_seq_len, opt.keep_case, is_ctx=True)
 
     if not (len(valid_src_word_insts) == len(valid_tgt_word_insts) == len(valid_ctx_word_insts)) :
         print('[Warning] The validation instance count is not equal.')
