@@ -11,7 +11,8 @@ class DataLoader(object):
     def __init__(
             self, src_word2idx, tgt_word2idx,
             src_insts=None, tgt_insts=None,
-            cuda=True, batch_size=64, shuffle=True, is_train=True):
+            cuda=True, batch_size=64, shuffle=True,
+            is_train=True, sort_by_length=False, maxibatch_size=5):
 
         assert src_insts
         assert len(src_insts) >= batch_size
@@ -44,6 +45,10 @@ class DataLoader(object):
 
         if self._need_shuffle:
             self.shuffle()
+
+        self._sort_by_length = sort_by_length
+
+        self._maxibatch_size = maxibatch_size
 
     @property
     def n_insts(self):
@@ -124,21 +129,50 @@ class DataLoader(object):
             return inst_data_tensor, inst_position_tensor
 
         if self._iter_count < self._n_batch:
+            
             batch_idx = self._iter_count
             self._iter_count += 1
 
-            start_idx = batch_idx * self._batch_size
-            end_idx = (batch_idx + 1) * self._batch_size
+            if self._sort_by_length:
 
-            src_insts = self._src_insts[start_idx:end_idx]
-            src_data, src_pos = pad_to_longest(src_insts)
+                if batch_idx % self._maxibatch_size == 0:
 
-            if not self._tgt_insts:
-                return src_data, src_pos
-            else:
-                tgt_insts = self._tgt_insts[start_idx:end_idx]
-                tgt_data, tgt_pos = pad_to_longest(tgt_insts)
+                    start_idx = batch_idx * self._batch_size
+                    end_idx = (batch_idx + self._maxibatch_size) * self._batch_size
+
+                    src_insts = self._src_insts[start_idx:end_idx]
+                    tgt_insts = self._tgt_insts[start_idx:end_idx]
+
+                    tlen = np.array([len(t) for t in tgt_insts])
+                    tidx = tlen.argsort()
+
+                    self._sbuf = [src_insts[i] for i in tidx]
+                    self._tbuf = [tgt_insts[i] for i in tidx]
+
+                cur_start = (batch_idx % self._maxibatch_size) * self._batch_size
+                cur_end = ((batch_idx % self._maxibatch_size) + 1) * self._batch_size
+
+                cur_src_insts = self._sbuf[cur_start:cur_end]
+                src_data, src_pos = pad_to_longest(cur_src_insts)
+
+                cur_tgt_insts = self._tbuf[cur_start:cur_end]
+                tgt_data, tgt_pos = pad_to_longest(cur_tgt_insts)
+
                 return (src_data, src_pos), (tgt_data, tgt_pos)
+
+            else:
+                start_idx = batch_idx * self._batch_size
+                end_idx = (batch_idx + 1) * self._batch_size
+
+                src_insts = self._src_insts[start_idx:end_idx]
+                src_data, src_pos = pad_to_longest(src_insts)
+
+                if not self._tgt_insts:
+                    return src_data, src_pos
+                else:
+                    tgt_insts = self._tgt_insts[start_idx:end_idx]
+                    tgt_data, tgt_pos = pad_to_longest(tgt_insts)
+                    return (src_data, src_pos), (tgt_data, tgt_pos)
 
         else:
 

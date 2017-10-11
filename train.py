@@ -252,7 +252,8 @@ def main():
         tgt_insts=data['train']['tgt'],
         batch_size=opt.batch_size,
         cuda=opt.cuda,
-        is_train=True)
+        is_train=True,
+        sort_by_length=True)
 
     validation_data = DataLoader(
         data['dict']['src'],
@@ -262,7 +263,8 @@ def main():
         batch_size=opt.batch_size,
         shuffle=False,
         cuda=opt.cuda,
-        is_train=False)
+        is_train=False,
+        sort_by_length=True)
 
     opt.src_vocab_size = training_data.src_vocab_size
     opt.tgt_vocab_size = training_data.tgt_vocab_size
@@ -300,7 +302,7 @@ def main():
 
     optimizer = ScheduledOptim(
         optim.Adam(
-            transformer.parameters(),
+            transformer.get_trainable_parameters(),
             betas=(0.9, 0.98), eps=1e-09),
         opt.d_model, opt.n_warmup_steps)
 
