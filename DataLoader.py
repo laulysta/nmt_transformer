@@ -12,7 +12,7 @@ class DataLoader(object):
             self, src_word2idx, tgt_word2idx,
             src_insts=None, tgt_insts=None,
             cuda=True, batch_size=64, shuffle=True,
-            is_train=True, sort_by_length=False, maxibatch_size=5):
+            is_train=True, sort_by_length=False, maxibatch_size=20):
 
         assert src_insts
         assert len(src_insts) >= batch_size
