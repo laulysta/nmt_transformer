@@ -10,9 +10,10 @@ class DataLoader(object):
 
     def __init__(
             self, src_word2idx, tgt_word2idx,
-            src_insts=None, tgt_insts=None,
+            src_insts=None, tgt_insts=None, ctx_insts=None,
             cuda=True, batch_size=64, shuffle=True,
-            is_train=True, sort_by_length=False, maxibatch_size=20):
+            is_train=True, sort_by_length=False,
+            maxibatch_size=20):
 
         assert src_insts
         assert len(src_insts) >= batch_size
@@ -27,6 +28,7 @@ class DataLoader(object):
 
         self._src_insts = src_insts
         self._tgt_insts = tgt_insts
+        self._ctx_insts = ctx_insts
 
         src_idx2word = {idx:word for word, idx in src_word2idx.items()}
         tgt_idx2word = {idx:word for word, idx in tgt_word2idx.items()}
@@ -49,6 +51,7 @@ class DataLoader(object):
         self._sort_by_length = sort_by_length
 
         self._maxibatch_size = maxibatch_size
+
 
     @property
     def n_insts(self):
@@ -88,11 +91,21 @@ class DataLoader(object):
     def shuffle(self):
         ''' Shuffle data for a brand new start '''
         if self._tgt_insts:
-            paired_insts = list(zip(self._src_insts, self._tgt_insts))
-            random.shuffle(paired_insts)
-            self._src_insts, self._tgt_insts = zip(*paired_insts)
+            if self._ctx_insts:
+                paired_insts = list(zip(self._src_insts, self._tgt_insts, self._ctx_insts))
+                random.shuffle(paired_insts)
+                self._src_insts, self._tgt_insts, self._ctx_insts = zip(*paired_insts)
+            else:
+                paired_insts = list(zip(self._src_insts, self._tgt_insts))
+                random.shuffle(paired_insts)
+                self._src_insts, self._tgt_insts = zip(*paired_insts)
         else:
-            random.shuffle(self._src_insts)
+            if self._ctx_insts:
+                paired_insts = list(zip(self._src_insts, self._ctx_insts))
+                random.shuffle(paired_insts)
+                self._src_insts, self._ctx_insts = zip(*paired_insts)
+            else:
+                random.shuffle(self._src_insts)
 
 
     def __iter__(self):
@@ -133,7 +146,10 @@ class DataLoader(object):
             batch_idx = self._iter_count
             self._iter_count += 1
 
+
             if self._sort_by_length:
+
+                assert self._tgt_insts, 'Target must be provided to do sort_by_length'
 
                 if batch_idx % self._maxibatch_size == 0:
 
@@ -149,6 +165,10 @@ class DataLoader(object):
                     self._sbuf = [src_insts[i] for i in tidx]
                     self._tbuf = [tgt_insts[i] for i in tidx]
 
+                    if self._ctx_insts:
+                        ctx_insts = self._ctx_insts[start_idx:end_idx]
+                        self._cbuf = [ctx_insts[i] for i in tidx]
+
                 cur_start = (batch_idx % self._maxibatch_size) * self._batch_size
                 cur_end = ((batch_idx % self._maxibatch_size) + 1) * self._batch_size
 
@@ -158,7 +178,14 @@ class DataLoader(object):
                 cur_tgt_insts = self._tbuf[cur_start:cur_end]
                 tgt_data, tgt_pos = pad_to_longest(cur_tgt_insts)
 
-                return (src_data, src_pos), (tgt_data, tgt_pos)
+                if self._ctx_insts:
+                    cur_ctx_insts = self._cbuf[cur_start:cur_end]
+                    ctx_data, ctx_pos = pad_to_longest(cur_ctx_insts)
+
+                    return (src_data, src_pos), (tgt_data, tgt_pos), (ctx_data, ctx_pos)
+
+                else:
+                    return (src_data, src_pos), (tgt_data, tgt_pos)
 
             else:
                 start_idx = batch_idx * self._batch_size
@@ -167,12 +194,22 @@ class DataLoader(object):
                 src_insts = self._src_insts[start_idx:end_idx]
                 src_data, src_pos = pad_to_longest(src_insts)
 
+                if self._ctx_insts:
+                    ctx_insts = self._ctx_insts[start_idx:end_idx]
+                    ctx_data, ctx_pos = pad_to_longest(ctx_insts)
+                
                 if not self._tgt_insts:
-                    return src_data, src_pos
+                    if self._ctx_insts:
+                        return (src_data, src_pos), (ctx_data, ctx_pos)
+                    else:
+                        return src_data, src_pos
                 else:
                     tgt_insts = self._tgt_insts[start_idx:end_idx]
                     tgt_data, tgt_pos = pad_to_longest(tgt_insts)
-                    return (src_data, src_pos), (tgt_data, tgt_pos)
+                    if self._ctx_insts:
+                        return (src_data, src_pos), (tgt_data, tgt_pos), (ctx_data, ctx_pos)
+                    else:
+                        return (src_data, src_pos), (tgt_data, tgt_pos)
 
         else:
 

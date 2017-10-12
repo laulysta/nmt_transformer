@@ -68,12 +68,18 @@ def train_epoch(model, training_data, crit, logsoftmax, optimizer, opt):
             desc='  - (Training)   ', leave=False):
 
         # prepare data
-        src, tgt = batch
+        if opt.use_ctx:
+            src, tgt, ctx = batch
+        else:
+            src, tgt = batch
         gold = tgt[0][:, 1:]
 
         # forward
         optimizer.zero_grad()
-        pred = model(src, tgt)
+        if opt.use_ctx:
+            pred = model(src, tgt, ctx)
+        else:
+            pred = model(src, tgt)
 
         # backward
         loss, n_correct = get_performance(crit, logsoftmax, pred, gold, opt)
@@ -109,11 +115,17 @@ def eval_epoch(model, validation_data, crit, logsoftmax, opt):
             desc='  - (Validation) ', leave=False):
 
         # prepare data
-        src, tgt = batch
+        if opt.use_ctx:
+            src, tgt, ctx = batch
+        else:
+            src, tgt = batch
         gold = tgt[0][:, 1:]
 
         # forward
-        pred = model(src, tgt)
+        if opt.use_ctx:
+            pred = model(src, tgt, ctx)
+        else:
+            pred = model(src, tgt)
         loss, n_correct = get_performance(crit, logsoftmax, pred, gold, opt)
 
         # note keeping
@@ -233,6 +245,8 @@ def main():
 
     parser.add_argument('-multi_gpu', action='store_true')
 
+    parser.add_argument('-use_ctx', action='store_true')
+
     parser.add_argument('-external_validation_script', type=str, default=None, metavar='PATH', nargs='*',
                          help="location of validation script (to run your favorite metric for validation) (default: %(default)s)")
 
@@ -244,12 +258,14 @@ def main():
     data = torch.load(opt.data)
     opt.max_token_seq_len = data['settings'].max_token_seq_len
 
+
     #========= Preparing DataLoader =========#
     training_data = DataLoader(
         data['dict']['src'],
         data['dict']['tgt'],
         src_insts=data['train']['src'],
         tgt_insts=data['train']['tgt'],
+        ctx_insts=(data['train']['ctx'] if opt.use_ctx else None),
         batch_size=opt.batch_size,
         cuda=opt.cuda,
         is_train=True,
@@ -260,6 +276,7 @@ def main():
         data['dict']['tgt'],
         src_insts=data['valid']['src'],
         tgt_insts=data['valid']['tgt'],
+        ctx_insts=(data['valid']['ctx'] if opt.use_ctx else None),
         batch_size=opt.batch_size,
         shuffle=False,
         cuda=opt.cuda,
@@ -268,6 +285,7 @@ def main():
 
     opt.src_vocab_size = training_data.src_vocab_size
     opt.tgt_vocab_size = training_data.tgt_vocab_size
+
 
     #========= Preparing Model =========#
     if opt.embs_share_weight and training_data.src_word2idx != training_data.tgt_word2idx:
@@ -289,7 +307,8 @@ def main():
         d_inner_hid=opt.d_inner_hid,
         n_layers=opt.n_layers,
         n_head=opt.n_head,
-        dropout=opt.dropout)
+        dropout=opt.dropout,
+        use_ctx=opt.use_ctx)
 
 
     #print(transformer)

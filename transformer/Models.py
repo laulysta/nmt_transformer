@@ -83,7 +83,7 @@ class Decoder(nn.Module):
     ''' A decoder model with self attention mechanism. '''
     def __init__(
             self, n_tgt_vocab, n_max_seq, n_layers=6, n_head=8, d_k=64, d_v=64,
-            d_word_vec=512, d_model=512, d_inner_hid=1024, dropout=0.1):
+            d_word_vec=512, d_model=512, d_inner_hid=1024, dropout=0.1, use_ctx=False):
 
         super(Decoder, self).__init__()
         n_position = n_max_seq + 1
@@ -97,12 +97,13 @@ class Decoder(nn.Module):
         self.tgt_word_emb = nn.Embedding(
             n_tgt_vocab, d_word_vec, padding_idx=Constants.PAD)
         self.dropout = nn.Dropout(dropout)
+        self.use_ctx=use_ctx
 
         self.layer_stack = nn.ModuleList([
-            DecoderLayer(d_model, d_inner_hid, n_head, d_k, d_v, dropout=dropout)
+            DecoderLayer(d_model, d_inner_hid, n_head, d_k, d_v, dropout=dropout, use_ctx=self.use_ctx)
             for _ in range(n_layers)])
 
-    def forward(self, tgt_seq, tgt_pos, src_seq, enc_outputs):
+    def forward(self, tgt_seq, tgt_pos, src_seq, enc_outputs, ctx_seq=None, ctx_outputs=None):
         # Word embedding look up
         dec_input = self.tgt_word_emb(tgt_seq)
 
@@ -118,17 +119,32 @@ class Decoder(nn.Module):
 
         dec_enc_attn_pad_mask = get_attn_padding_mask(tgt_seq, src_seq)
 
+
         dec_output = dec_input
-        for dec_layer, enc_output in zip(self.layer_stack, enc_outputs):
-            dec_output, dec_slf_attn, dec_enc_attn = dec_layer(
-                dec_output, enc_output, slf_attn_mask=dec_slf_attn_mask,
-                dec_enc_attn_mask=dec_enc_attn_pad_mask)
+        if self.use_ctx:
+            dec_ctx_attns = []
+            dec_ctx_attn_pad_mask = get_attn_padding_mask(tgt_seq, ctx_seq)
+            for dec_layer, enc_output, ctx_output in zip(self.layer_stack, enc_outputs, ctx_outputs):
+                dec_output, dec_slf_attn, dec_enc_attn, dec_ctx_attn = dec_layer(
+                    dec_output, enc_output, ctx_output, slf_attn_mask=dec_slf_attn_mask,
+                    dec_enc_attn_mask=dec_enc_attn_pad_mask, dec_ctx_attn_mask=dec_ctx_attn_pad_mask)
 
-            dec_outputs += [dec_output]
-            dec_slf_attns += [dec_slf_attn]
-            dec_enc_attns += [dec_enc_attn]
+                dec_outputs += [dec_output]
+                dec_slf_attns += [dec_slf_attn]
+                dec_enc_attns += [dec_enc_attn]
+                dec_ctx_attns += [dec_ctx_attn]
 
-        return dec_outputs, dec_slf_attns, dec_enc_attns
+        else:
+            for dec_layer, enc_output in zip(self.layer_stack, enc_outputs):
+                dec_output, dec_slf_attn, dec_enc_attn = dec_layer(
+                    dec_output, enc_output, slf_attn_mask=dec_slf_attn_mask,
+                    dec_enc_attn_mask=dec_enc_attn_pad_mask)
+
+                dec_outputs += [dec_output]
+                dec_slf_attns += [dec_slf_attn]
+                dec_enc_attns += [dec_enc_attn]
+
+        return dec_outputs, dec_slf_attns, dec_enc_attns, dec_ctx_attns
 
 class Transformer(nn.Module):
     ''' A sequence to sequence model with attention mechanism. '''
@@ -136,17 +152,29 @@ class Transformer(nn.Module):
     def __init__(
             self, n_src_vocab, n_tgt_vocab, n_max_seq, n_layers=6, n_head=8,
             d_word_vec=512, d_model=512, d_inner_hid=1024, d_k=64, d_v=64,
-            dropout=0.1, proj_share_weight=True, embs_share_weight=True):
+            dropout=0.1, proj_share_weight=True, embs_share_weight=True, use_ctx=False):
+
+        self.use_ctx = use_ctx
 
         super(Transformer, self).__init__()
         self.encoder = Encoder(
             n_src_vocab, n_max_seq, n_layers=n_layers, n_head=n_head,
             d_word_vec=d_word_vec, d_model=d_model,
             d_inner_hid=d_inner_hid, dropout=dropout)
+
+        if use_ctx:
+            self.encoder_ctx = Encoder(
+            n_src_vocab, n_max_seq, n_layers=n_layers, n_head=n_head,
+            d_word_vec=d_word_vec, d_model=d_model,
+            d_inner_hid=d_inner_hid, dropout=dropout)
+
+            # Share the word embeddings between the src encoder and the ctx encoder 
+            self.encoder_ctx.src_word_emb.weight = self.encoder.src_word_emb.weight
+
         self.decoder = Decoder(
             n_tgt_vocab, n_max_seq, n_layers=n_layers, n_head=n_head,
             d_word_vec=d_word_vec, d_model=d_model,
-            d_inner_hid=d_inner_hid, dropout=dropout)
+            d_inner_hid=d_inner_hid, dropout=dropout, use_ctx=use_ctx)
         self.tgt_word_proj = Linear(d_model, n_tgt_vocab, bias=False)
         self.dropout = nn.Dropout(dropout)
 
@@ -169,10 +197,22 @@ class Transformer(nn.Module):
         ''' Avoid updating the position encoding '''
         enc_freezed_param_ids = set(map(id, self.encoder.position_enc.parameters()))
         dec_freezed_param_ids = set(map(id, self.decoder.position_enc.parameters()))
-        freezed_param_ids = enc_freezed_param_ids | dec_freezed_param_ids
+        if self.use_ctx:
+            ctx_freezed_param_ids = set(map(id, self.encoder_ctx.position_enc.parameters()))
+            freezed_param_ids = enc_freezed_param_ids | dec_freezed_param_ids | ctx_freezed_param_ids
+        else:
+            freezed_param_ids = enc_freezed_param_ids | dec_freezed_param_ids
         return (p for p in self.parameters() if id(p) not in freezed_param_ids)
 
-    def forward(self, src, tgt):
+    def forward(self, src, tgt, ctx=None):
+
+        #import pdb
+        #pdb.set_trace()
+
+        if ctx is not None:
+            ctx_seq, ctx_pos = ctx
+            ctx_outputs, ctx_slf_attns = self.encoder_ctx(ctx_seq, ctx_pos)
+
         src_seq, src_pos = src
         tgt_seq, tgt_pos = tgt
 
@@ -180,8 +220,12 @@ class Transformer(nn.Module):
         tgt_pos = tgt_pos[:, :-1]
 
         enc_outputs, enc_slf_attns = self.encoder(src_seq, src_pos)
-        dec_outputs, dec_slf_attns, dec_enc_attns = self.decoder(
-            tgt_seq, tgt_pos, src_seq, enc_outputs)
+        if self.use_ctx:
+            dec_outputs, dec_slf_attns, dec_enc_attns, dec_ctx_attns = self.decoder(
+                tgt_seq, tgt_pos, src_seq, enc_outputs, ctx_seq, ctx_outputs)
+        else:
+            dec_outputs, dec_slf_attns, dec_enc_attns = self.decoder(
+                tgt_seq, tgt_pos, src_seq, enc_outputs)
         dec_output = dec_outputs[-1]
 
         seq_logit = self.tgt_word_proj(dec_output)
