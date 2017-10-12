@@ -144,7 +144,10 @@ class Decoder(nn.Module):
                 dec_slf_attns += [dec_slf_attn]
                 dec_enc_attns += [dec_enc_attn]
 
-        return dec_outputs, dec_slf_attns, dec_enc_attns, dec_ctx_attns
+        if self.use_ctx:
+            return dec_outputs, dec_slf_attns, dec_enc_attns, dec_ctx_attns
+        else:
+            return dec_outputs, dec_slf_attns, dec_enc_attns
 
 class Transformer(nn.Module):
     ''' A sequence to sequence model with attention mechanism. '''

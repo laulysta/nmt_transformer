@@ -43,4 +43,7 @@ class DecoderLayer(nn.Module):
                 dec_output, ctx_output, ctx_output, attn_mask=dec_ctx_attn_mask)
         dec_output = self.pos_ffn(dec_output)
 
-        return dec_output, dec_slf_attn, dec_enc_attn, dec_ctx_attn
+        if self.use_ctx:
+            return dec_output, dec_slf_attn, dec_enc_attn, dec_ctx_attn
+        else:
+            return dec_output, dec_slf_attn, dec_enc_attn
