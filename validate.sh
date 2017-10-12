@@ -19,15 +19,27 @@ model_name=$1
 dev=$2
 ref=$3
 data=$4
+ctx=$5
 
 
-python3 translate.py \
--model $model_name \
--src $dev \
--vocab $data \
--output ${model_name}.output.dev \
--beam_size 1 \
--no_cuda
+if [ $ctx ]; then
+	python3 translate.py \
+	-model $model_name \
+	-src $dev \
+	-vocab $data \
+	-output ${model_name}.output.dev \
+	-beam_size 1 \
+	-no_cuda \
+	-ctx $ctx
+else
+	python3 translate.py \
+	-model $model_name \
+	-src $dev \
+	-vocab $data \
+	-output ${model_name}.output.dev \
+	-beam_size 1 \
+	-no_cuda
+fi
 
 
 sed -r 's/(@@ )|(@@ ?$)//g' < ${model_name}.output.dev > ${model_name}.output.dev.tmp

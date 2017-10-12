@@ -200,6 +200,8 @@ def train(model, training_data, validation_data, crit, logsoftmax, optimizer, op
                     p_validation.wait()
                     print("Waited for {0:.1f} seconds".format(time.time()-valid_wait_start))
                 external_validation_script = [opt.external_validation_script[0], model_name, opt.external_validation_script[1], opt.external_validation_script[2], opt.data]
+                if opt.use_ctx:
+                    external_validation_script.append(opt.external_validation_script[3])
                 p_validation = Popen(external_validation_script)
 
 

@@ -16,8 +16,10 @@ def main():
                         help='Path to model .pt file')
     parser.add_argument('-src', required=True,
                         help='Source sequence to decode (one line per sequence)')
+    parser.add_argument('-ctx', required=False, default="",
+                        help='Context sequence to decode (one line per sequence)')
     parser.add_argument('-vocab', required=True,
-                        help='Source sequence to decode (one line per sequence)')
+                        help='Data that contains the source vocabulary')
     parser.add_argument('-output', default='pred.txt',
                         help="""Path to output the predictions (each line will
                         be the decoded sequence""")
@@ -36,19 +38,33 @@ def main():
     # Prepare DataLoader
     preprocess_data = torch.load(opt.vocab)
     preprocess_settings = preprocess_data['settings']
+
     test_src_word_insts = read_instances_from_file(
         opt.src,
         preprocess_settings.max_word_seq_len,
         preprocess_settings.keep_case)
     test_src_insts = convert_instance_to_idx_seq(
         test_src_word_insts, preprocess_data['dict']['src'])
+
+    if opt.ctx:
+        from preprocess_ctx import read_instances_from_file as read_instances_from_file_ctx
+        test_ctx_word_insts = read_instances_from_file_ctx(
+            opt.ctx,
+            preprocess_settings.max_word_seq_len,
+            preprocess_settings.keep_case,
+            is_ctx=True)
+        test_ctx_insts = convert_instance_to_idx_seq(
+            test_ctx_word_insts, preprocess_data['dict']['src'])
+
     test_data = DataLoader(
         preprocess_data['dict']['src'],
         preprocess_data['dict']['tgt'],
         src_insts=test_src_insts,
+        ctx_insts=(test_ctx_insts if opt.ctx else None),
         cuda=opt.cuda,
         shuffle=False,
-        batch_size=opt.batch_size)
+        batch_size=opt.batch_size,
+        is_train=False)
 
     translator = Translator(opt)
     translator.model.eval()

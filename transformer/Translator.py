@@ -31,7 +31,8 @@ class Translator(object):
             d_inner_hid=model_opt.d_inner_hid,
             n_layers=model_opt.n_layers,
             n_head=model_opt.n_head,
-            dropout=model_opt.dropout)
+            dropout=model_opt.dropout,
+            use_ctx=model_opt.use_ctx)
 
         prob_projection = nn.LogSoftmax()
 
@@ -54,11 +55,14 @@ class Translator(object):
         ''' Translation work in one batch '''
 
         # Batch size is in different location depending on data.
-        src_seq, src_pos = src_batch
+        if self.model_opt.use_ctx:
+            (src_seq, src_pos), (ctx_seq, ctx_pos) = src_batch
+        else:
+            src_seq, src_pos = src_batch
         batch_size = src_seq.size(0)
         beam_size = self.opt.beam_size
 
-        #- Enocde
+        #- Encode
         enc_outputs, enc_slf_attns = self.model.encoder(src_seq, src_pos)
 
         #--- Repeat data for beam
@@ -66,6 +70,16 @@ class Translator(object):
         enc_outputs = [
             Variable(enc_output.data.repeat(beam_size, 1, 1))
             for enc_output in enc_outputs]
+
+        if self.model_opt.use_ctx:
+            #- Encode
+            ctx_outputs, ctx_slf_attns = self.model.encoder_ctx(ctx_seq, ctx_pos)
+
+            #--- Repeat data for beam
+            ctx_seq = Variable(ctx_seq.data.repeat(beam_size, 1))
+            ctx_outputs = [
+                Variable(ctx_output.data.repeat(beam_size, 1, 1))
+                for ctx_output in ctx_outputs]
 
         #--- Prepare beams
         beam = [Beam(beam_size, self.opt.cuda) for k in range(batch_size)]
@@ -95,8 +109,12 @@ class Translator(object):
                 input_data = input_data.cuda()
 
             # -- Decoding -- #
-            dec_outputs, dec_slf_attns, dec_enc_attns = self.model.decoder(
-                input_data, input_pos, src_seq, enc_outputs)
+            if self.model_opt.use_ctx:
+                dec_outputs, dec_slf_attns, dec_enc_attns, dec_ctx_attns = self.model.decoder(
+                    input_data, input_pos, src_seq, enc_outputs, ctx_seq, ctx_outputs)
+            else:
+                dec_outputs, dec_slf_attns, dec_enc_attns = self.model.decoder(
+                    input_data, input_pos, src_seq, enc_outputs)
             dec_output = dec_outputs[-1][:, -1, :] # (batch * beam) * d_model
             dec_output = self.model.tgt_word_proj(dec_output)
             out = self.model.prob_projection(dec_output)
@@ -142,11 +160,18 @@ class Translator(object):
                 # select the active index in batch
                 return Variable(view.index_select(0, active_idx).view(*new_size), volatile=True)
 
+
             src_seq = update_active_seq(src_seq, active_idx)
             enc_outputs = [
                 update_active_enc_info(enc_output, active_idx)
                 for enc_output in enc_outputs]
             n_remaining_sents = len(active)
+
+            if self.model_opt.use_ctx:
+                ctx_seq = update_active_seq(ctx_seq, active_idx)
+                ctx_outputs = [
+                    update_active_enc_info(ctx_output, active_idx)
+                    for ctx_output in ctx_outputs]
 
         #- Return useful information
         all_hyp, all_scores = [], []
