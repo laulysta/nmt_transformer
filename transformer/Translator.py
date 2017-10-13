@@ -167,13 +167,13 @@ class Translator(object):
             enc_outputs = [
                 update_active_enc_info(enc_output, active_idx)
                 for enc_output in enc_outputs]
-            n_remaining_sents = len(active)
 
             if self.model_opt.use_ctx:
                 ctx_seq = update_active_seq(ctx_seq, active_idx)
                 ctx_outputs = [
                     update_active_enc_info(ctx_output, active_idx)
                     for ctx_output in ctx_outputs]
+            n_remaining_sents = len(active)
 
         #- Return useful information
         all_hyp, all_scores = [], []
