@@ -16,6 +16,8 @@ class Translator(object):
 
         checkpoint = torch.load(opt.model, map_location=lambda storage, loc: storage)
         model_opt = checkpoint['settings']
+        if 'use_ctx' not in model_opt.__dict__:
+            model_opt.use_ctx = False
         self.model_opt = model_opt
 
         model = Transformer(
