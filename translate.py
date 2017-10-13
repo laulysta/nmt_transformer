@@ -25,7 +25,7 @@ def main():
                         be the decoded sequence""")
     parser.add_argument('-beam_size', type=int, default=5,
                         help='Beam size')
-    parser.add_argument('-batch_size', type=int, default=20,
+    parser.add_argument('-batch_size', type=int, default=40,
                         help='Batch size')
     parser.add_argument('-n_best', type=int, default=1,
                         help="""If verbose is set, will output the n_best
@@ -74,8 +74,8 @@ def main():
             all_hyp, all_scores = translator.translate_batch(batch)
             for idx_seqs in all_hyp:
                 for idx_seq in idx_seqs:
-                    if idx_seqs[-1] == 3: # if last word is EOS
-                        idx_seqs = idx_seq[:-1]
+                    if idx_seq[-1] == 3: # if last word is EOS
+                        idx_seq = idx_seq[:-1]
                     pred_line = ' '.join([test_data.tgt_idx2word[idx] for idx in idx_seq])
                     f.write(pred_line + '\n')
     print('[Info] Finished.')
