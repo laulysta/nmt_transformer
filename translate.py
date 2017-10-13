@@ -41,7 +41,7 @@ def main():
 
     test_src_word_insts = read_instances_from_file(
         opt.src,
-        preprocess_settings.max_word_seq_len,
+        1000,
         preprocess_settings.keep_case)
     test_src_insts = convert_instance_to_idx_seq(
         test_src_word_insts, preprocess_data['dict']['src'])
@@ -50,7 +50,7 @@ def main():
         from preprocess_ctx import read_instances_from_file as read_instances_from_file_ctx
         test_ctx_word_insts = read_instances_from_file_ctx(
             opt.ctx,
-            preprocess_settings.max_word_seq_len,
+            1000,
             preprocess_settings.keep_case,
             is_ctx=True)
         test_ctx_insts = convert_instance_to_idx_seq(
