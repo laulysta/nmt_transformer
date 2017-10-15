@@ -31,6 +31,8 @@ def main():
                         help="""If verbose is set, will output the n_best
                         decoded sentences""")
     parser.add_argument('-no_cuda', action='store_true')
+    parser.add_argument('-max_token_seq_len', type=int, default=500,
+                        help='max word in a sentence')
 
     opt = parser.parse_args()
     opt.cuda = not opt.no_cuda
@@ -41,7 +43,7 @@ def main():
 
     test_src_word_insts = read_instances_from_file(
         opt.src,
-        1000,
+        opt.max_token_seq_len,
         preprocess_settings.keep_case)
     test_src_insts = convert_instance_to_idx_seq(
         test_src_word_insts, preprocess_data['dict']['src'])
@@ -50,7 +52,7 @@ def main():
         from preprocess_ctx import read_instances_from_file as read_instances_from_file_ctx
         test_ctx_word_insts = read_instances_from_file_ctx(
             opt.ctx,
-            1000,
+            opt.max_token_seq_len,
             preprocess_settings.keep_case,
             is_ctx=True)
         test_ctx_insts = convert_instance_to_idx_seq(
