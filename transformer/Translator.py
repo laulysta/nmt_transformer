@@ -6,6 +6,8 @@ from torch.autograd import Variable
 
 from transformer.Models import Transformer
 from transformer.Beam import Beam
+from transformer.Models import position_encoding_init
+import transformer.Constants as Constants
 
 class Translator(object):
     ''' Load with trained model and handle the beam search '''
@@ -39,6 +41,10 @@ class Translator(object):
         prob_projection = nn.LogSoftmax()
 
         model.load_state_dict(checkpoint['model'])
+
+        # New max_token_seq_len for position encoding
+        model = self.change_position_embedings(model, opt.max_token_seq_len, model_opt.d_word_vec, model_opt.use_ctx)
+        model_opt.max_token_seq_len = opt.max_token_seq_len
         print('[Info] Trained model state loaded.')
 
         if opt.cuda:
@@ -52,6 +58,20 @@ class Translator(object):
 
         self.model = model
         self.model.eval()
+
+    def change_position_embedings(self, model, max_token_seq_len, d_word_vec, use_ctx):
+        n_position = max_token_seq_len + 1
+        model.encoder.position_enc = nn.Embedding(n_position, d_word_vec, padding_idx=Constants.PAD)
+        model.encoder.position_enc.weight.data = position_encoding_init(n_position, d_word_vec)
+
+        model.decoder.position_enc = nn.Embedding(n_position, d_word_vec, padding_idx=Constants.PAD)
+        model.decoder.position_enc.weight.data = position_encoding_init(n_position, d_word_vec)
+
+        if use_ctx:
+            model.encoder_ctx.position_enc = nn.Embedding(n_position, d_word_vec, padding_idx=Constants.PAD)
+            model.encoder_ctx.position_enc.weight.data = position_encoding_init(n_position, d_word_vec)
+
+        return model
 
     def translate_batch(self, src_batch):
         ''' Translation work in one batch '''
