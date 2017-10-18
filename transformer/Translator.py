@@ -112,10 +112,12 @@ class Translator(object):
         for i in range(self.model_opt.max_token_seq_len):
 
             len_dec_seq = i + 1
-
+            
             # -- Preparing decode data seq -- #
             input_data = torch.stack([
                 b.get_current_state() for b in beam if not b.done]) # size: mb x bm x sq
+            
+            input_data = input_data.permute(1,0,2).contiguous()
             input_data = input_data.view(-1, len_dec_seq)           # size: (mb*bm) x sq
             input_data = Variable(input_data, volatile=True)
 
@@ -142,20 +144,21 @@ class Translator(object):
             out = self.model.prob_projection(dec_output)
 
             # batch x beam x n_words
-            word_lk = out.view(n_remaining_sents, beam_size, -1).contiguous()
-
+            #word_lk = out.view(n_remaining_sents, beam_size, -1).contiguous()
+            word_lk = out.view(beam_size, n_remaining_sents, -1).contiguous()
+            
             active = []
             for b in range(batch_size):
                 if beam[b].done:
                     continue
 
                 idx = batch_idx[b]
-                if not beam[b].advance(word_lk.data[idx]):
+                if not beam[b].advance(word_lk.data[:,idx]):
                     active += [b]
 
             if not active:
                 break
-
+            
             # in this section, the sentences that are still active are
             # compacted so that the decoder is not run on completed sentences
             active_idx = self.tt.LongTensor([batch_idx[k] for k in active])
