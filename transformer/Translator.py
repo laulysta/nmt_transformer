@@ -144,7 +144,6 @@ class Translator(object):
             out = self.model.prob_projection(dec_output)
 
             # batch x beam x n_words
-            #word_lk = out.view(n_remaining_sents, beam_size, -1).contiguous()
             word_lk = out.view(beam_size, n_remaining_sents, -1).contiguous()
             
             active = []
@@ -158,7 +157,7 @@ class Translator(object):
 
             if not active:
                 break
-            
+
             # in this section, the sentences that are still active are
             # compacted so that the decoder is not run on completed sentences
             active_idx = self.tt.LongTensor([batch_idx[k] for k in active])
@@ -166,25 +165,17 @@ class Translator(object):
 
             def update_active_enc_info(tensor_var, active_idx):
                 ''' Remove the encoder outputs of finished instances in one batch. '''
-                tensor_data = tensor_var.data.view(n_remaining_sents, -1, self.model_opt.d_model)
-
-                new_size = list(tensor_var.size())
-                new_size[0] = new_size[0] * len(active_idx) // n_remaining_sents
-
-                # select the active index in batch
-                return Variable(
-                    tensor_data.index_select(0, active_idx).view(*new_size),
-                    volatile=True)
+                batch = tensor_var.data[:n_remaining_sents]
+                selected = batch.index_select(0, active_idx)
+                data = selected.repeat(beam_size, 1, 1)
+                return Variable(data, volatile=True)
 
             def update_active_seq(seq, active_idx):
                 ''' Remove the src sequence of finished instances in one batch. '''
-                view = seq.data.view(n_remaining_sents, -1)
-                new_size = list(seq.size())
-                new_size[0] = new_size[0] * len(active_idx) // n_remaining_sents # trim on batch dim
-
-                # select the active index in batch
-                return Variable(view.index_select(0, active_idx).view(*new_size), volatile=True)
-
+                batch = seq.data[:n_remaining_sents]
+                selected = batch.index_select(0, active_idx)
+                data = selected.repeat(beam_size, 1)
+                return Variable(data, volatile=True)
 
             src_seq = update_active_seq(src_seq, active_idx)
             enc_outputs = [
@@ -203,9 +194,14 @@ class Translator(object):
         n_best = self.opt.n_best
 
         for b in range(batch_size):
+            scores = self.tt.FloatTensor(beam_size+len(beam[b].finish_early_scores)).zero_()
+            scores[:beam_size] = beam[b].scores
+            for i in range(beam_size, beam_size+len(beam[b].finish_early_scores)):
+                scores[i] = beam[b].finish_early_scores[i-beam_size][2]
+            beam[b].scores = scores
             scores, ks = beam[b].sort_scores()
             all_scores += [scores[:n_best]]
-            hyps = [beam[b].get_hypothesis(k) for k in ks[:n_best]]
+            hyps = [beam[b].get_hypothesis(k) if k < beam_size
+                    else beam[b].get_early_hypothesis(beam[b].finish_early_scores[k-beam_size][0], beam[b].finish_early_scores[k-beam_size][1]) for k in ks[:n_best]]
             all_hyp += [hyps]
-
         return all_hyp, all_scores

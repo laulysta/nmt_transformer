@@ -30,6 +30,8 @@ class Beam(object):
         self.next_ys = [self.tt.LongTensor(size).fill_(Constants.PAD)]
         self.next_ys[0][0] = Constants.BOS
 
+        self.finish_early_scores = []
+
     def get_current_state(self):
         "Get the outputs for the current timestep."
         return self.get_tentative_hypothesis()
@@ -45,6 +47,11 @@ class Beam(object):
         # Sum the previous scores.
         if len(self.prev_ks) > 0:
             beam_lk = word_lk + self.scores.unsqueeze(1).expand_as(word_lk)
+            
+            # Don't les EOS have children. # From OpenNMT
+            for i in range(self.next_ys[-1].size(0)):
+                if self.next_ys[-1][i] == Constants.EOS:
+                    beam_lk[i] = -1e20
         else:
             beam_lk = word_lk[0]
 
@@ -67,7 +74,17 @@ class Beam(object):
             self.done = True
             self.all_scores.append(self.scores)
 
+        if not self.done:
+            for i in range(1, self.next_ys[-1].size(0)):
+                if self.next_ys[-1][i] == Constants.EOS:
+                    self.finish_early_scores.append((i, len(self.prev_ks), self.scores[i]))
+
         return self.done
+
+    #print('scores', beam[0].scores)
+    #print('all_scores', beam[0].all_scores)
+    #print('prev_ks', beam[0].prev_ks)
+    #print('next_ys', beam[0].next_ys))
 
     def sort_scores(self):
         "Sort the scores."
@@ -110,3 +127,12 @@ class Beam(object):
             k = self.prev_ks[j][k]
 
         return hyp[::-1]
+
+    def get_early_hypothesis(self, k, t):
+        hyp = []
+        for j in range(t - 1, -1, -1):
+            hyp.append(self.next_ys[j+1][k])
+            k = self.prev_ks[j][k]
+
+        return hyp[::-1]
+
