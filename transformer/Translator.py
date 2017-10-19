@@ -86,23 +86,22 @@ class Translator(object):
 
         #- Encode
         enc_outputs, enc_slf_attns = self.model.encoder(src_seq, src_pos)
+        enc_output = enc_outputs[-1]
 
         #--- Repeat data for beam
         src_seq = Variable(src_seq.data.repeat(beam_size, 1))
-        enc_outputs = [
-            Variable(enc_output.data.repeat(beam_size, 1, 1))
-            for enc_output in enc_outputs]
+        enc_output = Variable(enc_output.data.repeat(beam_size, 1, 1))
+            
 
         if self.model_opt.use_ctx:
             #- Encode
             ctx_outputs, ctx_slf_attns = self.model.encoder_ctx(ctx_seq, ctx_pos)
+            ctx_output = ctx_outputs[-1]
 
             #--- Repeat data for beam
             ctx_seq = Variable(ctx_seq.data.repeat(beam_size, 1))
-            ctx_outputs = [
-                Variable(ctx_output.data.repeat(beam_size, 1, 1))
-                for ctx_output in ctx_outputs]
-
+            ctx_output = Variable(ctx_output.data.repeat(beam_size, 1, 1))
+                
         #--- Prepare beams
         beam = [Beam(beam_size, self.opt.cuda) for k in range(batch_size)]
         batch_idx = list(range(batch_size))
@@ -135,10 +134,10 @@ class Translator(object):
             # -- Decoding -- #
             if self.model_opt.use_ctx:
                 dec_outputs, dec_slf_attns, dec_enc_attns, dec_ctx_attns = self.model.decoder(
-                    input_data, input_pos, src_seq, enc_outputs, ctx_seq, ctx_outputs)
+                    input_data, input_pos, src_seq, enc_output, ctx_seq, ctx_output)
             else:
                 dec_outputs, dec_slf_attns, dec_enc_attns = self.model.decoder(
-                    input_data, input_pos, src_seq, enc_outputs)
+                    input_data, input_pos, src_seq, enc_output)
             dec_output = dec_outputs[-1][:, -1, :] # (batch * beam) * d_model
             dec_output = self.model.tgt_word_proj(dec_output)
             out = self.model.prob_projection(dec_output)
@@ -178,15 +177,12 @@ class Translator(object):
                 return Variable(data, volatile=True)
 
             src_seq = update_active_seq(src_seq, active_idx)
-            enc_outputs = [
-                update_active_enc_info(enc_output, active_idx)
-                for enc_output in enc_outputs]
+            enc_output = update_active_enc_info(enc_output, active_idx)
 
             if self.model_opt.use_ctx:
                 ctx_seq = update_active_seq(ctx_seq, active_idx)
-                ctx_outputs = [
-                    update_active_enc_info(ctx_output, active_idx)
-                    for ctx_output in ctx_outputs]
+                ctx_output = update_active_enc_info(ctx_output, active_idx)
+                    
             n_remaining_sents = len(active)
 
         #- Return useful information

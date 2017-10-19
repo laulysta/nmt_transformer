@@ -103,7 +103,7 @@ class Decoder(nn.Module):
             DecoderLayer(d_model, d_inner_hid, n_head, d_k, d_v, dropout=dropout, use_ctx=self.use_ctx)
             for _ in range(n_layers)])
 
-    def forward(self, tgt_seq, tgt_pos, src_seq, enc_outputs, ctx_seq=None, ctx_outputs=None):
+    def forward(self, tgt_seq, tgt_pos, src_seq, enc_output, ctx_seq=None, ctx_output=None):
         # Word embedding look up
         dec_input = self.tgt_word_emb(tgt_seq)
 
@@ -124,7 +124,7 @@ class Decoder(nn.Module):
         if self.use_ctx:
             dec_ctx_attns = []
             dec_ctx_attn_pad_mask = get_attn_padding_mask(tgt_seq, ctx_seq)
-            for dec_layer, enc_output, ctx_output in zip(self.layer_stack, enc_outputs, ctx_outputs):
+            for dec_layer in self.layer_stack:
                 dec_output, dec_slf_attn, dec_enc_attn, dec_ctx_attn = dec_layer(
                     dec_output, enc_output, ctx_output, slf_attn_mask=dec_slf_attn_mask,
                     dec_enc_attn_mask=dec_enc_attn_pad_mask, dec_ctx_attn_mask=dec_ctx_attn_pad_mask)
@@ -135,7 +135,7 @@ class Decoder(nn.Module):
                 dec_ctx_attns += [dec_ctx_attn]
 
         else:
-            for dec_layer, enc_output in zip(self.layer_stack, enc_outputs):
+            for dec_layer in self.layer_stack:
                 dec_output, dec_slf_attn, dec_enc_attn = dec_layer(
                     dec_output, enc_output, slf_attn_mask=dec_slf_attn_mask,
                     dec_enc_attn_mask=dec_enc_attn_pad_mask)
@@ -215,6 +215,7 @@ class Transformer(nn.Module):
         if ctx is not None:
             ctx_seq, ctx_pos = ctx
             ctx_outputs, ctx_slf_attns = self.encoder_ctx(ctx_seq, ctx_pos)
+            ctx_output = ctx_outputs[-1]
 
         src_seq, src_pos = src
         tgt_seq, tgt_pos = tgt
@@ -223,12 +224,13 @@ class Transformer(nn.Module):
         tgt_pos = tgt_pos[:, :-1]
 
         enc_outputs, enc_slf_attns = self.encoder(src_seq, src_pos)
+        enc_output = enc_outputs[-1]
         if self.use_ctx:
             dec_outputs, dec_slf_attns, dec_enc_attns, dec_ctx_attns = self.decoder(
-                tgt_seq, tgt_pos, src_seq, enc_outputs, ctx_seq, ctx_outputs)
+                tgt_seq, tgt_pos, src_seq, enc_output, ctx_seq, ctx_output)
         else:
             dec_outputs, dec_slf_attns, dec_enc_attns = self.decoder(
-                tgt_seq, tgt_pos, src_seq, enc_outputs)
+                tgt_seq, tgt_pos, src_seq, enc_output)
         dec_output = dec_outputs[-1]
 
         seq_logit = self.tgt_word_proj(dec_output)
